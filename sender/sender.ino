@@ -4,70 +4,80 @@
 * Updated: Dec 2014 by TMRh20
 */
 
+
 #include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP085_U.h>
 
 #include <RF24_config.h>
 #include <nRF24L01.h>
 #include <SPI.h>
-#include <SoftwareSerial.h>
-#include "RF24.h"
-#include <U8glib.h>
-#include <TinyGPS++.h>
-#include <SSD1306Ascii.h>
-#include <SSD1306AsciiWire.h>
+#include <RF24.h>
+
+#include "../../arduino-nrf24-multiple-tx/shared/pta.h"
 
 RF24 radio(9, 10);
 static const int senderAdd[2] = { 0xF0F0F0F0AA, 0xF0F0F0F066 };
-static const int sender = 1;
+static const int sender = 0;
+
+Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
 
 void setup() 
 {
-    pinMode(13, OUTPUT);
-    Serial.begin(115200);
-    Serial.print(F("SENDER"));
+    Serial.begin(9600);
+    Serial.print(F("SENDER PIPE "));
     Serial.println(sender + 1);
 
     radio.begin();
-    radio.setPALevel(RF24_PA_HIGH);
+    radio.setPALevel(RF24_PA_LOW);
+    radio.setRetries(15, 15);
     radio.openWritingPipe(senderAdd[sender]);
     radio.stopListening();
-}
 
-
-void displayBuffer(char* buffer)
-{    
-    int y = 2 * 8;
-    int len = strlen(buffer);
-    Serial.print(sender + 1);
-    Serial.print(F(" Buffer: "));
-    Serial.println(buffer);
-}
-
-int count = 0;
-void prepareBuffer(char* buffer, int maxLen)
-{
-    count++;
-    if (count > 1000)
+    if (!bmp.begin())
     {
-        count = 0;
+        Serial.print("Ooops, no BMP085 detected ... Check your wiring or I2C ADDR!");
     }
-    sprintf(buffer, "%d", count);
 }
 
+void displayValue(byte value)
+{    
+    Serial.print(F("Pipe "));
+    Serial.print(sender + 1);
+    Serial.print(F(", Value: "));
+    Serial.print(value);
+    Serial.print(" ... ");
+}
+
+byte value = 0;
 void loop()
 {
-    char buffer[32];
-    buffer[0] = '\0';
-    prepareBuffer(buffer, 32);
-    displayBuffer(buffer);
+    sensors_event_t event;
+    bmp.getEvent(&event);
 
-    digitalWrite(13, HIGH);
-    bool sendResult = radio.write(buffer, strlen(buffer));
-    digitalWrite(13, LOW);
-    if (!sendResult)
+    if (event.pressure)
     {
-        Serial.println("X");
+        PTA pta;
+
+        pta.pressure = event.pressure;
+        float temperature;
+        bmp.getTemperature(&temperature);
+        pta.temperature = temperature;
+        // mean sea level pressure in hpa from 
+        // http://vancouver.weatherstats.ca/charts/pressure_sea-2weeks.html
+        float seaLevelPressure = 1025.2;
+        pta.altitude = bmp.pressureToAltitude(
+            seaLevelPressure,
+            pta.pressure,
+            pta.temperature);
+
+        PrintPTA(pta, Serial);
+
+        if (!radio.write(&pta, sizeof(PTA)))
+        {
+            Serial.println("No Ack");
+        }
     }
 
-    delay(150);
+    delay(10000);
 }

@@ -6,45 +6,35 @@
 
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include <LiquidCrystal.h>
-#include <LCD.h>
-#include <I2CIO.h>
-#include <FastIO.h>
 
 #include <RF24_config.h>
-#include <printf.h>
 #include <nRF24L01.h>
 #include <SPI.h>
-#include "RF24.h"
+#include <RF24.h>
+
+#include "../../arduino-nrf24-multiple-tx/shared/pta.h"
 
 #define I2C_ADDR 0x27
-#define BACKLIGHT_PIN 3
-#define En_pin  2
-#define Rw_pin  1
-#define Rs_pin  0
-#define D4_pin  4
-#define D5_pin  5
-#define D6_pin  6
-#define D7_pin  7
-
-LiquidCrystal_I2C lcd(I2C_ADDR, En_pin, Rw_pin, Rs_pin, D4_pin, D5_pin, D6_pin, D7_pin);
-
+LiquidCrystal_I2C lcd(I2C_ADDR, 8, 2);
 
 RF24 radio(9, 10);
 static const int receiverAdd[2] = { 0xF0F0F0F0AA, 0xF0F0F0F066 };
 
 void setup()
 {
-    lcd.begin(16, 2);
-    lcd.setBacklightPin(BACKLIGHT_PIN, POSITIVE);
-    lcd.setBacklight(HIGH);
+    lcd.init();
+    lcd.blink();
+    lcd.backlight();
     lcd.home();
 
-    Serial.begin(115200);
+    Serial.begin(9600);
     Serial.println(F("Receiver"));
+    lcd.print("Receiver");
 
     radio.begin();
-    radio.setPALevel(RF24_PA_HIGH);
+    radio.setAutoAck(true);
+    radio.setPALevel(RF24_PA_LOW);
+    radio.setRetries(15, 15);
     radio.openReadingPipe(1, receiverAdd[0]);
     radio.openReadingPipe(2, receiverAdd[1]);
 
@@ -52,55 +42,32 @@ void setup()
     radio.startListening();
 }
 
-void displayBufferOnLcd(char* buffer, int pipe)
+byte lastValue = 0;
+void displayBufferOnLcd(byte value, int pipe)
 {
+    if (value != lastValue + 1)
+    {
+        Serial.println("--------");
+    }
+    lastValue = value;
+
+    Serial.print(F("Pipe: "));
     Serial.print(pipe);
-    Serial.print(F(" "));
-    Serial.print(F("Buffer: "));
-    Serial.println(buffer);
-
-    lcd.setCursor(0, pipe - 1);
-    lcd.print(F("                "));
-    lcd.setCursor(0, pipe - 1);
-    lcd.print(buffer);
-    return;
-
-
-
-    int len = strlen(buffer);
-    char line[16 + 1];
-    strncpy(line, buffer, 16);
-    line[16] = '\0';
-    Serial.print(F("Line 1: "));
-    Serial.println(line);
-    if (len > 16 && len < 32)
-    {
-        strncpy(line, &buffer[16], len - 16);
-        line[len - 16] = '\0';
-    }
-    else
-    {
-        strncpy(line, &buffer[17], 16);
-        line[16] = '\0';
-    }
-    Serial.print(F("Line 2: "));
-    Serial.println(line);
+    Serial.print(F(", "));
+    Serial.print(F("Value: "));
+    Serial.println(value, DEC);
 }
+
 
 void loop()
 {
-    char buffer[32];
-    buffer[0] = '\0';
+    byte value;
 
     uint8_t pipeNum = 0;
     if (radio.available(&pipeNum))
     {
-        digitalWrite(13, HIGH);
-        radio.read(&buffer, 32);
-
-        displayBufferOnLcd(buffer, pipeNum);
-        digitalWrite(13, LOW);
+        PTA pta;
+        radio.read(&pta, sizeof(PTA));
+        PrintPTA(pta, Serial);
     }
-
-    delay(10);
 }

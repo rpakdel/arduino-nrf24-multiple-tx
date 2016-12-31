@@ -18,7 +18,10 @@
     <None Include="sender.ino" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Visual Micro\.sender.vsarduino.h">
+    <ClInclude Include="__vm\.sender.vsarduino.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\shared\pta.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
